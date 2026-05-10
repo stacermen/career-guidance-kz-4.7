@@ -51,6 +51,7 @@ out/
 .nuxt/
 .svelte-kit/
 .vite/
+*.tsbuildinfo
 
 # Env files
 .env
