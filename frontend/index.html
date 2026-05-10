@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru" class="">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ИИ-наставник для абитуриентов Казахстана: пройдите 5 валидированных психологических тестов и получите персональные рекомендации университетов и специальностей." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>Career Guidance KZ — психологический подбор профессии</title>
+    <script>
+      // Apply theme preference before paint to avoid FOUC.
+      (function () {
+        try {
+          const stored = localStorage.getItem("theme");
+          const prefers = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const theme = stored || (prefers ? "dark" : "light");
+          if (theme === "dark") document.documentElement.classList.add("dark");
+        } catch (_) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
