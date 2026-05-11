@@ -13,9 +13,21 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://career:career@localhost:5432/careerdb",
         alias="DATABASE_URL",
     )
-    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
-    anthropic_model: str = Field(default="claude-sonnet-4-20250514", alias="ANTHROPIC_MODEL")
-    anthropic_timeout: float = Field(default=30.0, alias="ANTHROPIC_TIMEOUT")
+
+    # AI provider: Pollinations.ai (free, OpenAI-compatible, no API key required).
+    # See https://pollinations.ai — the `openai` model alias resolves to a free
+    # open-source LLM (currently gpt-oss-20b on the anonymous tier).
+    pollinations_url: str = Field(
+        default="https://text.pollinations.ai/openai",
+        alias="POLLINATIONS_URL",
+    )
+    pollinations_model: str = Field(default="openai", alias="POLLINATIONS_MODEL")
+    pollinations_timeout: float = Field(default=300.0, alias="POLLINATIONS_TIMEOUT")
+    pollinations_referer: str = Field(
+        default="career-guidance-kz",
+        alias="POLLINATIONS_REFERER",
+    )
+
     secret_key: str = Field(default="dev-secret", alias="SECRET_KEY")
     cors_origins: str = Field(
         default="http://localhost:5173,http://localhost,http://localhost:80",

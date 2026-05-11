@@ -1,4 +1,4 @@
-"""POST /api/analyze — runs scoring → Claude → recommendations and persists everything."""
+"""POST /api/analyze — scoring → AI analysis → recommendations, persisted to DB."""
 
 from __future__ import annotations
 
@@ -131,6 +131,6 @@ async def analyze(payload: AnalyzeIn, db: AsyncSession = Depends(get_db)) -> Res
 
 @router.get("/analyze/{session_id}/scores")
 async def debug_scores(session_id, db: AsyncSession = Depends(get_db)) -> dict:
-    """Helper for the frontend to peek at raw scores without re-running Claude."""
+    """Helper for the frontend to peek at raw scores without re-running the AI."""
     scores, traits = await _compute_scores(db, session_id)
     return {"scores": scores, "traits": traits, "code": json.dumps(traits)}

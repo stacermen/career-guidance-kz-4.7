@@ -89,7 +89,26 @@ export interface AnswerLocal {
   value: AnswerValue;
 }
 
-export const CITY_OPTIONS = ["Алматы", "Астана", "Шымкент", "Қарағанды", "Павлодар"] as const;
+export const CITY_OPTIONS = [
+  "Алматы",
+  "Астана",
+  "Шымкент",
+  "Қарағанды",
+  "Павлодар",
+  "Өскемен",
+  "Семей",
+  "Қостанай",
+  "Петропавл",
+  "Көкшетау",
+  "Орал",
+  "Ақтөбе",
+  "Ақтау",
+  "Атырау",
+  "Қызылорда",
+  "Тараз",
+  "Талдыкорган",
+  "Туркестан",
+] as const;
 export const CATEGORY_OPTIONS = [
   "IT",
   "Engineering",

@@ -1,12 +1,19 @@
-"""Anthropic Claude integration: deep career analysis + streaming chat."""
+"""Free open AI integration via Pollinations.ai (OpenAI-compatible, no API key).
+
+Pollinations exposes a free, anonymous, OpenAI-compatible chat completions
+endpoint at ``https://text.pollinations.ai/openai`` that supports both JSON
+mode and SSE streaming. We use it as a drop-in replacement for paid LLMs so
+the app works fully out-of-the-box without any credentials.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 from collections.abc import AsyncIterator
+from typing import Any
 
-from anthropic import AsyncAnthropic
+import httpx
 
 from app.core.config import get_settings
 from app.schemas.schemas import AIAnalysis
@@ -30,12 +37,7 @@ You are a warm, empathetic career counselor speaking with a high-school or unive
 You already know the student's full psychological profile (provided as context).
 You ALWAYS reply in Russian, in a friendly conversational tone, no more than 4-5 short paragraphs per reply.
 You may suggest specific Kazakhstan universities and specializations from the catalogue if relevant.
-Never reveal that you are Claude or an AI; refer to yourself as «ИИ-наставник»."""
-
-
-def _client() -> AsyncAnthropic:
-    settings = get_settings()
-    return AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=settings.anthropic_timeout)
+Never reveal which underlying model you are; refer to yourself as «ИИ-наставник»."""
 
 
 def build_user_prompt(scores: dict[str, dict[str, float]], user_name: str | None = None) -> str:
@@ -82,7 +84,8 @@ def build_user_prompt(scores: dict[str, dict[str, float]], user_name: str | None
 }}
 
 Категории в specialization_categories ОБЯЗАТЕЛЬНО выбирай только из списка: IT, Engineering, Medicine, Economics, Law, Pedagogy, Arts.
-Верни от 6 до 10 carrier_paths, отсортированных по match_score по убыванию.
+Верни ровно 6 career_paths, отсортированных по match_score по убыванию.
+Будь лаконичен: краткие предложения, без воды, не повторяйся.
 """
 
 
@@ -91,36 +94,155 @@ def _strip_fences(text: str) -> str:
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
         if text.endswith("```"):
-            text = text[: -3]
+            text = text[:-3]
     return text.strip()
 
 
-async def analyze(scores: dict[str, dict[str, float]], user_name: str | None = None) -> AIAnalysis:
-    """Run the full career analysis with Claude.
+def _extract_json_object(text: str) -> str:
+    """Find the first balanced ``{...}`` JSON object in ``text``.
 
-    Falls back to a deterministic placeholder analysis if the API key is unset
-    or the call fails — this keeps the app usable in demo / offline modes.
+    Pollinations sometimes prepends or appends commentary even when asked
+    not to; this helper recovers a parseable JSON blob from a noisy reply.
+    """
+    text = _strip_fences(text)
+    depth = 0
+    start = -1
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start != -1:
+                return text[start : i + 1]
+    return text
+
+
+async def _stream_completion(
+    *,
+    messages: list[dict[str, Any]],
+    json_mode: bool,
+    max_tokens: int,
+    timeout: float,
+) -> AsyncIterator[str]:
+    """POST to Pollinations with stream=true and yield content deltas.
+
+    Skips ``delta.reasoning`` chunks (the model emits internal chain-of-thought
+    before the answer) and only yields user-visible ``delta.content`` text.
     """
     settings = get_settings()
-    if not settings.anthropic_api_key:
-        logger.warning("ANTHROPIC_API_KEY is empty; returning fallback analysis")
+    payload: dict[str, Any] = {
+        "model": settings.pollinations_model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": 0.7,
+        "stream": True,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    if settings.pollinations_referer:
+        payload["referrer"] = settings.pollinations_referer
+
+    httpx_timeout = httpx.Timeout(timeout, connect=15.0, read=timeout, write=15.0)
+    async with httpx.AsyncClient(timeout=httpx_timeout) as client:
+        async with client.stream(
+            "POST",
+            settings.pollinations_url,
+            json=payload,
+            headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                chunk_str = line[5:].strip()
+                if not chunk_str or chunk_str == "[DONE]":
+                    if chunk_str == "[DONE]":
+                        return
+                    continue
+                try:
+                    chunk = json.loads(chunk_str)
+                except json.JSONDecodeError:
+                    continue
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                content = delta.get("content")
+                if content:
+                    yield content
+
+
+async def analyze(scores: dict[str, dict[str, float]], user_name: str | None = None) -> AIAnalysis:
+    """Run the full career analysis with Pollinations.ai.
+
+    Uses streaming to avoid TCP read timeouts for slow reasoning models —
+    we collect content deltas until the stream completes, then parse the
+    full JSON object.
+
+    Falls back to a deterministic placeholder analysis if the network call
+    fails or the model returns unparseable output. This keeps the app fully
+    usable in sandboxed / offline / rate-limited environments.
+    """
+    settings = get_settings()
+    try:
+        parts: list[str] = []
+        async for delta in _stream_completion(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": build_user_prompt(scores, user_name)},
+            ],
+            json_mode=True,
+            max_tokens=16384,
+            timeout=settings.pollinations_timeout,
+        ):
+            parts.append(delta)
+        full = "".join(parts)
+        raw = _extract_json_object(full)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            # Model may have been cut off — try to repair a truncated JSON.
+            repaired = _repair_truncated_json(raw)
+            parsed = json.loads(repaired)
+        return AIAnalysis.model_validate(parsed)
+    except Exception:
+        logger.exception("Pollinations analyze failed, falling back to deterministic analysis")
         return _fallback_analysis(scores)
 
-    try:
-        client = _client()
-        message = await client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=4096,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_user_prompt(scores, user_name)}],
-        )
-        raw = "".join(b.text for b in message.content if getattr(b, "type", "") == "text")
-        raw = _strip_fences(raw)
-        data = json.loads(raw)
-        return AIAnalysis.model_validate(data)
-    except Exception:
-        logger.exception("Claude analyze failed, falling back")
-        return _fallback_analysis(scores)
+
+def _repair_truncated_json(text: str) -> str:
+    """Best-effort repair of a JSON object the model failed to close.
+
+    Trims to the last fully-closed top-level field, then balances brackets.
+    """
+    # Drop any trailing partial unicode escape, etc.
+    s = text.rstrip()
+    # If we're inside a string, terminate it.
+    in_str = False
+    escape = False
+    for ch in s:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+    if in_str:
+        s += '"'
+    # Balance braces and brackets.
+    open_curly = s.count("{") - s.count("}")
+    open_sq = s.count("[") - s.count("]")
+    # Remove a trailing comma that would now be illegal.
+    s = s.rstrip()
+    if s.endswith(","):
+        s = s[:-1]
+    s += "]" * max(0, open_sq)
+    s += "}" * max(0, open_curly)
+    return s
 
 
 async def chat_stream(
@@ -128,49 +250,44 @@ async def chat_stream(
     analysis_summary: str | None,
     history: list[dict[str, str]],
 ) -> AsyncIterator[str]:
-    """Stream a chat response from Claude as plain text chunks.
+    """Stream a chat response from Pollinations as plain text chunks.
 
     `history` is a list of `{role, content}` dicts where role is 'user' or 'assistant'.
     The final user message must be the most recent in the list.
     """
     settings = get_settings()
-    if not settings.anthropic_api_key:
-        yield (
-            "ИИ-наставник временно недоступен (не задан API-ключ). "
-            "Однако ваши результаты сохранены — обратитесь к ним позже."
-        )
-        return
 
     context_blocks: list[str] = []
     if analysis_summary:
         context_blocks.append(f"Резюме профиля студента:\n{analysis_summary}")
     if scores:
-        context_blocks.append(f"Сырые баллы по тестам:\n{json.dumps(scores, ensure_ascii=False)}")
+        context_blocks.append(
+            f"Сырые баллы по тестам:\n{json.dumps(scores, ensure_ascii=False)}"
+        )
 
     system = CHAT_SYSTEM_PROMPT
     if context_blocks:
         system = system + "\n\n" + "\n\n".join(context_blocks)
 
-    api_messages = [{"role": m["role"], "content": m["content"]} for m in history]
+    api_messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
+    for m in history:
+        api_messages.append({"role": m["role"], "content": m["content"]})
 
-    client = _client()
     try:
-        async with client.messages.stream(
-            model=settings.anthropic_model,
-            max_tokens=1024,
-            system=system,
+        async for delta in _stream_completion(
             messages=api_messages,
-        ) as stream:
-            async for chunk in stream.text_stream:
-                if chunk:
-                    yield chunk
+            json_mode=False,
+            max_tokens=1024,
+            timeout=settings.pollinations_timeout,
+        ):
+            yield delta
     except Exception as e:
-        logger.exception("Claude chat stream failed")
+        logger.exception("Pollinations chat stream failed")
         yield f"\n[ошибка ИИ: {type(e).__name__}]"
 
 
 # ---------------------------------------------------------------------------
-# Fallback analysis (used when key is missing or Claude errors out).
+# Fallback analysis (used when the network call fails).
 # ---------------------------------------------------------------------------
 
 
@@ -198,8 +315,8 @@ def _fallback_analysis(scores: dict[str, dict[str, float]]) -> AIAnalysis:
         f"Ваш код Холланда — {code}. По профилю вы склонны к "
         f"{holland_label.get(code[0], 'разностороннему')} типам деятельности, "
         f"а ведущие виды интеллекта — {', '.join(d for d, _ in top_mi) or 'разнообразные'}. "
-        "Этот фолбэк-анализ сгенерирован без ИИ — добавьте ANTHROPIC_API_KEY и запустите снова, "
-        "чтобы получить полноценный персонализированный разбор."
+        "Этот фолбэк-анализ сгенерирован без подключения к ИИ — это значит, что "
+        "сервис Pollinations.ai сейчас недоступен; обычно подключение бесплатное и не требует ключа."
     )
 
     return AIAnalysis(

@@ -1,4 +1,4 @@
-"""Match Claude's recommended career paths to the seeded specialization catalogue."""
+"""Match AI-recommended career paths to the seeded specialization catalogue."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ async def build_recommendations(
     analysis: AIAnalysis,
     limit: int = 24,
 ) -> list[Recommendation]:
-    """For each Claude career path, select up to N matching specializations.
+    """For each AI-suggested career path, select up to N matching specializations.
 
     The match score for each specialization is the parent path's `match_score`
     minus a small per-rank decay so cards within a path are ordered.

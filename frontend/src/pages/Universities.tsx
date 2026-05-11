@@ -69,7 +69,7 @@ export function UniversitiesPage() {
         <div>
           <h1 className="text-3xl font-bold">Университеты Казахстана</h1>
           <p className="mt-1 text-sm text-slate-500">
-            17 университетов · 60+ специальностей · фильтр по городам и направлениям
+            55 университетов · 18 городов · фильтр по направлениям и грантам
           </p>
         </div>
         <div className="relative">
