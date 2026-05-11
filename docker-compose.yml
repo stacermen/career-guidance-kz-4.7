@@ -26,9 +26,10 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-career}:${POSTGRES_PASSWORD:-career}@postgres:5432/${POSTGRES_DB:-careerdb}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
-      ANTHROPIC_TIMEOUT: ${ANTHROPIC_TIMEOUT:-30}
+      POLLINATIONS_URL: ${POLLINATIONS_URL:-https://text.pollinations.ai/openai}
+      POLLINATIONS_MODEL: ${POLLINATIONS_MODEL:-openai}
+      POLLINATIONS_TIMEOUT: ${POLLINATIONS_TIMEOUT:-300}
+      POLLINATIONS_REFERER: ${POLLINATIONS_REFERER:-career-guidance-kz}
       SECRET_KEY: ${SECRET_KEY:-dev-secret}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:5173,http://localhost:80}
     ports:

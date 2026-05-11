@@ -45,7 +45,7 @@ function Hero() {
           className="mx-auto max-w-3xl text-center"
         >
           <motion.div variants={fadeUp} className="inline-flex items-center gap-2 rounded-full border border-brand-200 dark:border-brand-800 bg-white dark:bg-slate-900 px-4 py-1.5 text-xs font-semibold text-brand-800 dark:text-brand-200">
-            <Sparkles className="h-3.5 w-3.5" /> Персональный ИИ-наставник на базе Claude
+            <Sparkles className="h-3.5 w-3.5" /> Бесплатный ИИ-наставник — без регистрации и ключей
           </motion.div>
           <motion.h1
             variants={fadeUp}
@@ -90,7 +90,7 @@ const REASONS = [
     icon: Sparkles,
     title: "ИИ-разбор личности",
     body:
-      "Claude формирует развёрнутый психологический портрет, объясняя, почему именно вам подходит каждое направление.",
+      "ИИ-наставник формирует развёрнутый психологический портрет, объясняя, почему именно вам подходит каждое направление.",
   },
   {
     icon: GraduationCap,
@@ -101,7 +101,7 @@ const REASONS = [
   {
     icon: Target,
     title: "Фильтры под ваш город",
-    body: "Алматы, Астана, Шымкент, Қарағанды, Павлодар — выбирайте, где удобно учиться.",
+    body: "Алматы, Астана, Шымкент, Қарағанды, Павлодар, Өскемен, Семей, Орал, Ақтөбе и другие — выбирайте, где удобно учиться.",
   },
   {
     icon: Users,

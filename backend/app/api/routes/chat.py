@@ -1,4 +1,4 @@
-"""Streaming SSE chat endpoint backed by Claude."""
+"""Streaming SSE chat endpoint backed by Pollinations.ai."""
 
 from __future__ import annotations
 
